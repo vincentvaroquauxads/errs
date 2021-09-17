@@ -17,6 +17,7 @@ package errs
 import (
 	"context"
 	"errors"
+	"net/url"
 	"os"
 	"strings"
 	"syscall"
@@ -24,11 +25,18 @@ import (
 	"google.golang.org/api/googleapi"
 )
 
-//Temporary inspects the error trace and returns wether the error is transient
+//Temporary inspects the error trace and returns whether the error is transient
 func Temporary(err error) bool {
 	if err == nil {
 		return false
 	}
+	
+	//extract url.Error as url.Error.Temporary does not use errors.As()
+	var uerr *url.Error
+	if errors.As(err, &uerr) {
+		err = uerr.Err
+	}
+
 	//override some default syscall temporary statuses
 	var errno syscall.Errno
 	if errors.As(err, &errno) {
@@ -47,8 +55,8 @@ func Temporary(err error) bool {
 	//google api errors
 	var gapiError *googleapi.Error
 	if errors.As(err, &gapiError) {
-		switch gapiError.Code {
-		case 429, 500, 502, 503, 504:
+		//https://cloud.google.com/storage/docs/exponential-backoff.
+		if gapiError.Code == 429 || (gapiError.Code >= 500 && gapiError.Code < 600) {
 			return true
 		}
 	}
